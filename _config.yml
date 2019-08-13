@@ -1,0 +1,32 @@
+# Site settings
+port: 4444
+title: IPMS
+description: InterPlanetary Mutable System
+email: michelcombes@advancementofcivilizationeffort.org
+baseurl: ""
+url: "//.netlify.com" # the base hostname & protocol for your site
+url: "//{{user}}.netlify.com" # the base hostname & protocol for your site
+#favicon
+favicon: favicon.png
+
+# misc parameters 
+search: https://duckduckgo.com/?q
+static: https://cdn.statically.io/img
+backimg: /cloudflare-ipfs.com/ipfs/Z7HTtJJS7EkGNMzJR3bM4DTjynTUHsuAhm8hBft4i7XZq4vJvYgfeW9diytXgBhrqGCFhnhHmD/blockDNA.jpg
+
+# Build settings
+markdown: kramdown
+
+#Can be used for multiple author blogs ! Add name to post For more visit the sample
+authors:
+  michelc:
+    display_name: Michel C.
+    email: michelcombes@advancementofcivilizationeffort.org
+    fb: mgcombs
+    linkedin: mgcombes
+    twitter: michel_c
+    github: michel47
+
+exclude: [.org, Gemfile, Gemfile.lock, _site, Rakefile, travis.sh, vendor]
+
+# vim: nospell
