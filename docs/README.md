@@ -13,6 +13,10 @@ What wrong with the whole [blockchain industry][BI] ?
 [IM]: {{site.search}}=immutable+ledger
 [BI]: {{site.search}}=!g+what's+wrong+with+the+blockchain+industry
 
+_____
+[![Netlify Status](https://api.netlify.com/api/v1/badges/b7189b96-54cf-45fd-8b6a-a4ba6c12f1dd/deploy-status)](https://app.netlify.com/sites/quirky-benz-32940b/deploys)
+
+
 Out of all the blockchains and ledger technologies around
 we are missing a simple one :
 
