@@ -1,11 +1,14 @@
 # Site settings
-port: 4444
+port: 4000
 title: IPMS
 description: InterPlanetary Mutable System
 email: michelcombes@advancementofcivilizationeffort.org
 baseurl: ""
-url: "//.netlify.com" # the base hostname & protocol for your site
-url: "//{{user}}.netlify.com" # the base hostname & protocol for your site
+ghuser: michel47
+nname: quirky-benz-32940b
+url: "//quirky-benz-32940b.netlify.com/" # the base hostname & protocol for your site
+theme: jekyll-theme-hacker
+
 #favicon
 favicon: favicon.png
 
@@ -13,9 +16,10 @@ favicon: favicon.png
 search: https://duckduckgo.com/?q
 static: https://cdn.statically.io/img
 backimg: /cloudflare-ipfs.com/ipfs/Z7HTtJJS7EkGNMzJR3bM4DTjynTUHsuAhm8hBft4i7XZq4vJvYgfeW9diytXgBhrqGCFhnhHmD/blockDNA.jpg
+searchq: https://duckduck.go/?q
 
 # Build settings
-markdown: kramdown
+#markdown: kramdown
 
 #Can be used for multiple author blogs ! Add name to post For more visit the sample
 authors:

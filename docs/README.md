@@ -1,7 +1,25 @@
 ---
 layout: default
+title: README -- learn about mutable systems
 ---
 # InterPlanetary Mutable System (IPMS)
+
+[![bring](//img.shields.io/badge/project-blockRingTM-darkgreen.svg?style=flat-square&logo=CodeSandbox&logoColor=gold)](//blockRing™.gq")
+[![standard-readme compliant](//img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](//github.com/RichardLitt/standard-readme)
+[![jsd](//data.jsdelivr.com/v1/package/gh/iglake/cssjs/badge?style=flat-square&color=black)](//www.jsdelivr.com/package/gh/iglake/cssjs)
+
+<a href="//www.jsdelivr.com/package/gh/miche47/cgism">
+<img style="opacity:0.6;" src="//data.jsdelivr.com/v1/package/gh/michel47/cgism/badge?style=flat-square&color=yellow"></a>
+
+[![Netlify Status](https://api.netlify.com/api/v1/badges/b7189b96-54cf-45fd-8b6a-a4ba6c12f1dd/deploy-status)](https://app.netlify.com/sites/quirky-benz-32940b/deploys)
+[![markdown](https://img.shields.io/badge/format-markdown-ffaabb.svg?style=flat-square&logo=Markdown&logoColor=ffaabb)](http://markdown.org)
+[![IP](//img.shields.io/badge/IP-127.0.0.1-purple.svg?style=flat-square&logo=IP&logoColor=red)](//blockRing™.gq")
+(<span class="ip">ip</span>)
+![Codetally](https://img.shields.io/codetally/michel47/bin)
+![ct](https://www.codetally.com/shield/username/reponame?1501195872560)
+
+___
+
 
 
 Everything is change, in perpetual transformation
@@ -12,9 +30,6 @@ What wrong with the whole [blockchain industry][BI] ?
 
 [IM]: {{site.search}}=immutable+ledger
 [BI]: {{site.search}}=!g+what's+wrong+with+the+blockchain+industry
-
-_____
-[![Netlify Status](https://api.netlify.com/api/v1/badges/b7189b96-54cf-45fd-8b6a-a4ba6c12f1dd/deploy-status)](https://app.netlify.com/sites/quirky-benz-32940b/deploys)
 
 
 Out of all the blockchains and ledger technologies around
@@ -45,6 +60,12 @@ from the bad.
 
 
 
+{% for post in site.posts %}
+    <a href="{{ post.url }}">
+        <h2>{{ post.title }} &mdash; {{ post.date | date_to_string }}</h2>
+    </a>
+    {{ post.content }}
+{% endfor %}
 
 
 

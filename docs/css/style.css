@@ -1,1 +1,4 @@
-/* empty css */
+
+div.content {
+ background-image: linear-gradient(to bottom right,white,lightblue);
+}

@@ -1,0 +1,6 @@
+*~
+*.org
+.jekyll-cache
+.bundle
+.sass-cache
+_site
