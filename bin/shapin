@@ -1,0 +1,45 @@
+#!/usr/bin/perl
+
+# Infinite Repos shared pins
+my $maxsize = 5; # in GB
+my $maxnbf = $maxsize*1024*1048576 / 256 / 1025;
+
+my $repodir;
+if (exists $ENV{IPFS_PATH}) {
+ $repodir = $ENV{IPFS_PATH} . '/blocks';
+} else {
+ $repodir = $ENV{HOME} . '/.ipfs/blocks';
+}
+printf "repos: %s\n",$repodir;
+my $en=log($maxnbf)/log(32);
+printf "entropy: %fc\n",$en;
+$l = int( $en );
+printf "len: %d\n",$l;
+printf "max: %.1fG estim\n",(32**($l)) * 256 / 1024 / 1024;
+
+my $peerid = &ipfs_api('config','Identity.PeerID');
+
+local *D; opendir D,$repodir;
+my @content = grep /^\w{2}$/, readdir(D); closedir D;
+printf "nshards: %d\n",scalar(@content);
+for my $shard (@content) {
+   local *D; opendir D,$repodir.'/'.$shard;
+   my @list = grep /\.data$/, readdir(D); closedir D;
+   foreach my $blob (@list) {
+      my $pattern = sprintf '%s.*%s.\.data',substr($peerid32,3,$l),$shard;
+      if ($blob =~ /$pattern/) {
+	 my $qm = 'Qm123';
+	 &ipfs_api('pin/add',$qm);
+      }
+   }
+}
+exit $?;
+
+sub ipfs_api {
+   my $cmd = shift;
+   my @arg = @_;
+}
+# vim: sw=3 et ai
+1; # $Source: /my/perl/scripts/repoprune.pl $
+
+
