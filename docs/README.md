@@ -26,7 +26,7 @@ Everything is change, in perpetual transformation
 and we try to develop system that are [immutable][IM],
 ledger that are permanent !
 
-What wrong with the whole [blockchain industry][BI] ?
+What is wrong with the whole [blockchain industry][BI] ?
 
 [IM]: {{site.search}}=immutable+ledger
 [BI]: {{site.search}}=!g+what's+wrong+with+the+blockchain+industry
@@ -43,21 +43,26 @@ we are missing a simple one :
  A system what will tell accurately the value of a mutable 
  and this without spending tons of network / computing resources.
 
- we don't want to "gamble" to have the HEAD block from the chain
+ we don't want to wastefully "gamble" to have the HEAD block from the chain.
 
 
-We have take a different approach to tackle the problem.
+With IPMS We have taken a different approach to tackle the problem.
+we consider immuables things of the past, and mutables things of the present.
 
-in fact this who as a global society we organize and put our act together to trustfully communicate on the *(inter)*net
+IN fact this inspired by nature, by who we are as a global society,
+we are with all form of life as a whole a complex organism.
+we organize, we continuously communicate and exchange,
+and this is only possible because of an inherent trust with oour peers.
+Today we can extend our reach globaly and communicate safely at large to the *(inter)*net.
 
 
-A mutable is a "decentalized element" that can be access anywhere with it value maintained by anyone.
-it constitutes an "immutable addressing scheme" every one can trust to find data.
+A mutable is a "decentalized element" that can be access anywhere
+with its value maintained by anyone.
+It constitutes an "immutable addressing scheme" every one can trust to find data.
 
-A every shared resource it can be "abuse" and the value of a mutable can be "hijacked"
-however is we ask everyone to sign their update we have a way to sort our the good records
+Every shared resources it can be "abused" and the value of a mutable can be "hijacked".
+however if we ask everyone to sign their update we have a way to sort our the good records
 from the bad.
-
 
 
 {% for post in site.posts %}
