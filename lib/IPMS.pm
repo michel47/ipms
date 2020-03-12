@@ -4,9 +4,9 @@ package IPMS;
 require Exporter;
 @ISA = qw(Exporter);
 # Subs we export by default.
-@EXPORT = ();
+@EXPORT = qw();
 # Subs we will export if asked.
-#@EXPORT_OK = qw(function);
+#@EXPORT_OK = qw(nickname);
 @EXPORT_OK = grep { $_ !~ m/^_/ && defined &$_; } keys %{__PACKAGE__ . '::'};
 
 use strict;
@@ -14,9 +14,7 @@ use strict;
 # ---------------------------------------------------------------------
 use if (exists $ENV{SITE}), lib => $ENV{SITE}.'/lib';
 # ---------------------------------------------------------------------
-use DVS qw(version hashr);
-use MISC qw(write_file nonl get_localip get_publicip);
-#use YAML::Syck qw();
+use UTIL qw(version);
 
 # The "use vars" and "$VERSION" statements seem to be required.
 use vars qw/$dbug $VERSION/;
@@ -28,9 +26,6 @@ $VERSION = &version(__FILE__) unless ($VERSION ne '0.00');
 
 our $PGW='https://gateway.ipfs.io';
     $PGW='https://cloudflare-ipfs.io';
-
-#ipms add https://raw.githubusercontent.com/gradual-quanta/minichain/master/docs/keywords.txt --hash sha3-224 --cid-base base58btc
-our $qmstatic='z6CfPtbmWhQCyNxEMAMFoHRJcRJyyi9KxVFdTaE46P3C'; # Alvaro F. Mangubat
 # -----------------------------------------------------
 sub encode_base58 {
   use Math::BigInt;
@@ -71,181 +66,18 @@ sub encode_base32z {
 }
 
 # -----------------------------------------------------
-sub ipms_cli_resolve { # /temporary disabled to see where it is used as it is a very similar to &ipms_path_resolve()
+sub resolve {
   my $iaddr = shift;
   my $mh = &ipmsrun('resolve '.$iaddr);
   printf "mh:%s.\n",YAML::Syck::Dump($mh) if $::dbug;
   return $mh->{ipath};
 }
 # -----------------------------------------------------
-sub ipms_local_mutable_resolve {
-  my $mfs_path = shift;
-     $mfs_path =~ s/^mfs://;
-  #printf "mfs: %s\n",$mfs_path;
-  my $mh = &ipms_api('files/stat',$mfs_path,'&hash=1');
-  #printf "%s: %s.\n",(caller(0))[3],Dump($mh) if $dbug;
-  return '/ipfs/'.$mh->{Hash};
-
-}
-sub ipms_path_resolve {
-  my $ipath = shift;
-  my $mh = &ipms_api('resolve',$ipath);
-  printf "%s.\n",Dump($mh) if $dbug;
-  return $mh->{Path};
-}
-sub mfs_unknown_resolve {
-  my $addr = shift;
-  printf "error: %s not supported !\n",$addr;
-  return 'Qmch1bQYa9zm3zvhdXZNF6LkF4DPVdCWt55qfKuAyv2nC4';
-}
-sub ipms_remote_mutable_resolve {
- my ($nick,$mpath) = @_;
- my $peerkey = &get_peerkey($nick);
- printf "peerkey: %s\n",$peerkey;
- my $ipath = &mfs_remote_mutable_resolve($peerkey,$mpath);
- return $ipath;
-}
-sub mfs_remote_mutable_resolve { # w/ keys and /./ as separator for mutable & local path...
- my ($key,$mpath) = @_; # QmKey,/my/path/./to/file.txt
-
- # get key@mfs:/.brings
- printf "info: name/resolve %s\n",$key;
- my $brng = &ipms_api('name/resolve',$key)->{Path};
- printf "brng: %s\n",$brng;
- # extract rootdir from mpath (implicit blockrings)
- my $rootdir = $1 if ($mpath =~ m,^/([^/]+),);
- # 
- # get /.brings/published/brindex.log
- my $mh = &ipms_api('resolve',"$brng/published/brindex.log");
- printf "mh: %s\n",Dump($mh);
- my $buf = &get_hash_content($mh->{Path});
- my $list = YAML::Syck::Load($buf);
- my %table = ();
- @table{map { s,/$,,; $_ } values %$list} = (keys %$list);
- printf "table: %s\n",Dump(\%table) if $dbug;
-
- # split mutable and local path :
- # ex: michelc@ipms:/my/files/./bin/add.sh 
- my ($parent,$son);
- my $dot = rindex($mpath,'/./');
- if ($dot > 0) {
-    ($parent,$son) = split('/\./',$mpath);
- } else {
-   my $slash = rindex($mpath,'/');
-   $parent = substr($mpath,0,$slash);
-   $son = substr($mpath,$slash+1);
- }
- printf "parent: %s/\n",$parent;
- printf "son: %s\n",$son;
- 
- my $ipath;
- if (exists $table{$parent}) {
-   $ipath='/ipfs/'.$table{$parent}.'/'.$son;
-   printf "ipath: %s\n",$ipath
- } elsif (exists $table{'/'}) {
-   $ipath='/ipfs/'.$table{'/'}.$mpath;
-   printf "ipath: %s\n",$ipath
- } else {
-   printf qq'error: parent "%s/" is not published\n',$parent;
-   # echo 'not published' | ipfs add -Q
-   return 'QmcY3zck1zc31ZE58xJGddQBVn6R4hGw48rdw8LxMcMLF8';
-   exit -$$;
- }
- my $mh = &ipms_api('resolve',$ipath);
- #printf "mh: %s\n",Dump($mh);
- return $mh->{Path};
-}
-# -----------------------------------------------------
-sub mfs_copy {
-   my $src = shift;
-   my $dst = shift;
-   my $parent = $dst; $parent =~ s,[^/]*$,,;
-   my $mh = &ipms_api('files/stat',"$dst",'&hash=1');
-#  printf "stat: %s.\n",YAML::Syck::Dump($mh);
-   if (exists $mh->{Hash}) { # mfs:$dst exists !
-      my $mh = &ipms_api('files/rm',"$dst");
-#     printf "rm: %s.\n",YAML::Syck::Dump($mh);
-   } else { # create the folder
-      my $mh = &ipms_api('files/mkdir',"$parent",'&parents=true');
-#     printf "mkdir: %s.\n",YAML::Syck::Dump($mh);
-   }
-   my $mh = &ipms_api('files/cp',"$src","&arg=$dst");
-#  printf "cp: %s.\n",YAML::Syck::Dump($mh);
-   return $?;
-}
-sub mfs_append {
-  my ($text,$mpath) = @_;
-  my $buf = &ipms_api('files/read',$mpath);
-  $buf = '' if (ref($buf) eq 'HASH'); # normally '', 'HASH' when error (file doesn't exist etc.)
-  $buf .= "$text";
-  $buf .= "\n" if ($text !~ m/\n$/);
-  # http://localhost:5001/api/v0/files/write?arg=<path>&offset=<value>&create=<value>
-  #  &parents=<value>&truncate=<value>&count=<value>&raw-leaves=<value>&cid-version=<value>&hash=<value>
-  my $mh = &ipms_post_api('files/write',$mpath,$buf,'&create=true&truncate=true&parents=true');
-  my $mh = &ipms_api('files/stat',$mpath,'&hash=true');
-  return $mh;
-}
-sub mfs_read {
-   my $mpath = shift;
-   my $data = &ipms_api('files/read',$mpath);
-   return $data;
-}
-# -----------------------------------------------------
-sub get_peerkey {
- our $nobodykey = 'QmcEAhNT1epnXAVzuaFmvHWrQYZkxiiwipsL3W4hL1pHY9';
- my $nickname = shift;
- printf "nickname: %s\n",$nickname;
- if ($nickname eq 'self') {
-   return &get_peeridkey();
- }
- my $peerids_hash = &ipms_local_mutable_resolve('mfs:/my/friends/peerids.yml');
- printf "peerids_hash: %s\n",$peerids_hash;
- #my $buf = &get_hash_content($peerids_hash);
- my $buf = &get_mutable_content('mfs:/my/friends/peerids.yml');
-
- my $peerids_table = &YAML::Syck::Load($buf);
- printf "%s.\n",Dump($peerids_table) if $dbug;
- if (exists $peerids_table->{$nickname}) {
-   return $peerids_table->{$nickname};
- } else {
-   return $nobodykey;
- }
-}
-sub get_peeridkey {
-  #my $mh = &ipms_api('config','Identity.PeerID');
-  #printf qq'mh: %s.\n',YAML::Syck::Dump($mh);
-  my $key = &ipms_api('config','Identity.PeerID')->{Value};
-}
-
-sub get_mutable_content {
-  my $mfs_path = shift;
-     $mfs_path =~ s/^mfs://;
-  my $buf = &ipms_api('files/read',$mfs_path);
-  #printf "%s.\n",Dump($buf) if $dbug;
-  return $buf;
-}
-
-# -----------------------------------------------------
 sub get_auth {
-  my $auth = '*';
-  my $ASKPASS;
-  if (exists $ENV{IPMS_ASKPASS}) {
-    $ASKPASS=$ENV{IPMS_ASKPASS}
-  } elsif (exists $ENV{SSH_ASKPASS}) {
-    $ASKPASS=$ENV{SSH_ASKPASS}
-  } elsif (exists $ENV{GIT_ASKPASS}) {
-    $ASKPASS=$ENV{GIT_ASKPASS}
-  }
-  if ($ASKPASS) { 
-     use MIME::Base64 qw(encode_base64);
-     local *X; open X, sprintf"%s %s %s|",${ASKPASS},'blockRing™';
-     local $/ = undef; my $pass = <X>; close X;
-     $auth = encode_base64(sprintf('michelc:%s',$pass),'');
-     return $auth;
-  } elsif (exists $ENV{AUTH}) {
-     return $ENV{AUTH};
+  if (exits $ENV{AUTH}}) {
+    return $ENV{AUTH};
   } else {
-     return 'YW5vbnltb3VzOnBhc3N3b3JkCg==';
+    return 'YW5vbnltb3VzOnBhc3N3b3JkCg==';
   }
 }
 # -----------------------------------------------------
@@ -256,22 +88,7 @@ sub get_key {
   return $keys->{$symb};
 }
 # -----------------------------------------------------
-sub get_addr {
-  my $mfspath = shift;
-  my $mh = &ipms_api('files/stat',$mfspath,'&hash=1');
-  printf "[get_addr] stat: %s.\n",YAML::Syck::Dump($mh) if $dbug;
-  return $mh->{Hash};
-}
-# -----------------------------------------------------
-sub get_hash_content {
-  my $hash = shift;
-  return undef unless defined $hash;
-  my $buf = &ipms_api('cat',$hash);
-  #printf "%s.\n",Dump($buf) if $dbug;
-  return $buf;
-}
-# -----------------------------------------------------
-sub get_repo_content {
+sub get_content {
   my $key = shift;
      $key = substr($key,1) if ($key =~ /^z/);
   my $keybin = &decode_base58($key);
@@ -285,76 +102,11 @@ sub get_repo_content {
   } else {
     $buf = "Status: 404 blockRing™ Content not Found\r\n";
     my $body = sprintf "404 : %s not found !\n",$blockf;
-    $buf .= sprintf "Content-Length: %u\r\n",length($body);
+    $buf .= "Content-Length: %u\r\n",length($body);
     $buf .= "Content-Type: text/plain\r\n\r\n";
     $buf .= $body;
   }
   return $buf;
-}
-# -----------------------------------------------------
-sub ipms_post_api {
-   use JSON qw(decode_json);
-   use LWP::UserAgent qw();
-   use HTTP::Request 6.07;
-   my $cmd = shift;
-   my $filename = shift;
-   my $data = shift;
-   my $opt = join'',@_;
-   my $filepath = '/tmp/blob.data';
-   my $api_url;
-   # --------------------------------
-   # selecting alternative endpoint :
-   if ($ENV{HTTP_HOST} =~ m/heliohost/) {
-      $api_url = sprintf'https://%s/api/v0/%%s?arg=%%s%%s','ipfs.blockringtm.ml';
-   } else {
-      my ($apihost,$apiport) = &get_apihostport();
-      $api_url = sprintf'http://%s:%s/api/v0/%%s?arg=%%s%%s',$apihost,$apiport;
-   }
-   # --------------------------------
-   if ($cmd =~ m/(?:add|write)$/) {
-      my $url = sprintf $api_url,$cmd,$filename,$opt; # name of type="file"
-      printf "X-api-url: %s\n",$url if $::dbug;
-      my $ua = LWP::UserAgent->new();
-      if ($ENV{HTTP_HOST} =~ m/heliohost/) {
-         my $realm='Restricted Content';
-         my $auth64 = &get_auth();
-         my ($user,$pass) = split':',&decode_base64($auth64);
-         $ua->credentials('ipfs.blockringtm.ml:443', $realm, $user, $pass);
-#       printf "X-Creds: %s:%s\n",$ua->credentials('ipfs.blockringtm.ml:443', $realm);
-      }
-      my $form = [
-#       You are allowed to use a CODE reference as content in the request object passed in.
-#       The content function should return the content when called. The content can be returned
-#       Content => [$filepath, $filename, Content => $data ]
-#        'file-to-upload' => ["$filepath" => "$filename", Content => "$data" ]
-         'file' => "$data"
-      ];
-      my $content = '5xx';
-      my $resp = $ua->post($url,$form, 'Content-Type' => "multipart/form-data;boundary=immutable-file-boundary-$$");
-      if ($resp->is_success) {
-#       printf "X-Status: %s\n",$resp->status_line;
-         $content = $resp->decoded_content;
-#       printf qq'content: "%s"\n',$content;
-      } else { # error ... 
-         printf "X-api-url: %s\n",$url;
-         printf "Status: %s\n",$resp->status_line;
-         $content = $resp->decoded_content;
-         local $/ = "\n";
-         chomp($content);
-         printf "Content: %s\n",$content;
-      }
-      if ($content =~ m/^{/) { # }
-         my $json = &decode_json($content);
-         return $json;
-      } else {
-         return $content;
-      }
-
-
-   } else {
-      my $sha2 = &hashr('SHA256',1,$data);
-      return 'z'.encode_base58(pack('H8','01551220').$sha2);
-   }
 }
 # -----------------------------------------------------
 sub ipms_api {
@@ -364,11 +116,10 @@ sub ipms_api {
    if ($ENV{HTTP_HOST} =~ m/heliohost/) {
       $api_url = sprintf'https://%s/api/v0/%%s?arg=%%s%%s','ipfs.blockringtm.ml';
    } else {
-     my ($apihost,$apiport) = &get_apihostport();
-      $api_url = sprintf'http://%s:%s/api/v0/%%s?arg=%%s%%s',$apihost,$apiport;
+      $api_url = sprintf'http://%s/api/v0/%%s?arg=%%s%%s','127.0.0.1:5001';
    }
-   my $url = sprintf $api_url,@_; # failed -w flag !
-   printf "X-api-url: %s\n",$url if $::dbug;
+   my $url = sprintf $api_url,@_;
+#  printf "X-api-url: %s<br>\n",$url;
    my $content = '';
    use LWP::UserAgent qw();
    use MIME::Base64 qw(decode_base64);
@@ -383,48 +134,21 @@ sub ipms_api {
    }
    my $resp = $ua->get($url);
    if ($resp->is_success) {
-#     printf "X-Status: %s\n",$resp->status_line;
+#     printf "X-Status: %s<br>\n",$resp->status_line;
       $content = $resp->decoded_content;
-   } else { # error ... 
-      #print "<pre>";
-      if ($_[0] !~ m/stat$/) {
-        printf "X-api-url: %s\n",$url;
-        printf "Status: %s\n",$resp->status_line;
-      }
+   } else {
+      print "<pre>";
+      printf "X-api-url: %s\n",$url;
+      printf "Status: %s\n",$resp->status_line;
       $content = $resp->decoded_content;
       local $/ = "\n";
       chomp($content);
       printf "Content: %s\n",$content;
-      #print "</pre>\n";
+      print "</pre>\n";
    }
-   if ($content =~ m/^{/) {
-      use JSON qw(decode_json);
-      my $json = &decode_json($content);
-      return $json;
-   } elsif ($_[0] =~ m{^(?:cat|files/read)}) {
-     return $content;
-   } else {
-	   printf "Content: %s\n",$content if $dbug;
-     if (0) {
-        $content =~ s/"/\\"/g;
-        $content =~ s/\x0a/\\n/g;
-        $content = sprintf'{"content":"%s"}',$content;
-     }
-     return $content;
-   }
-}
-# -----------------------------------------------------
-sub get_apihostport {
-  my $IPFS_PATH = $ENV{IPFS_PATH} || $ENV{HOME}.'/.ipfs';
-  my $conff = $IPFS_PATH . '/config';
-  local *CFG; open CFG,'<',$conff or warn $!,' '.$conff;
-  local $/ = undef; my $buf = <CFG>; close CFG;
-  use JSON qw(decode_json);
-  my $json = decode_json($buf);
-  my $apiaddr = $json->{Addresses}{API};
-  my (undef,undef,$apihost,undef,$apiport) = split'/',$apiaddr,5;
-      $apihost = '127.0.0.1' if ($apihost eq '0.0.0.0');
-  return ($apihost,$apiport);
+   use JSON qw(decode_json);
+   my $resp = &decode_json($content);
+   return $resp;
 }
 # -----------------------------------------------------
 # add,list,key,name,object,dag,block
@@ -646,312 +370,5 @@ sub cname {
   }
   return $cname;
 }
-
-# CxRDT Merge :
-sub merge_n {
- my ($myfile_h,@otherhashes) = @_;
- my $merged = $myfile_h; # 'z6CfPsNrajGLLoNHWshz5fm6JwY2HBYLAyTARUUwwhWe'; 
- foreach my $yourhash (@otherhashes) {
-   $merged = &merge2($merged,$yourhash); 
- }
- return $merged;
-}
-sub merge2 {
-  my ($a,$b) = @_;
-  my $x = &common_ancestor($a,$b);
-  my $hash = &merge3($a,$b,$x);
-  return $hash;
-}
-
-sub merge3 {
- use Text::Diff3;
- my ($ca,$cb,$cx) = map { &get_hash_content($_) } @_; # contents
- my ($pa,$pb,$px) = map { &remove_keywords($_) } ($ca,$cb,$cx); # payloads
- my ($a,$b,$x) = map { [ split(/\n/,$_) ] } ($pa,$pb,$px);
- if ($::dbug) {
-    &write_file('a.txt',join"\n",@{$a});
-    &write_file('b.txt',join"\n",@{$b});
-    &write_file('x.txt',join"\n",@{$x});
- }
- my $mergexa = Text::Diff3::merge($a,$x,$b);
- my $mergexb = Text::Diff3::merge($b,$x,$a);
- if ($::dbug) {
-  &write_file('mergexa.txt',join"\n",@{$mergexa->{body}});
-  &write_file('mergexb.txt',join"\n",@{$mergexb->{body}});
- }
- my $body = '';
- my $meta = '';
- my (@n,@h);
- if ($mergexa->{conflict} == 0) {
-   $body = join"\n",@{$mergexa->{body}};
-   $meta = &extract_keywords($ca);
-   @n = qw(a x b); @h = ($_[0], $_[2], $_[1]);
- } elsif ($mergexb->{conflict} == 0) {
-   $body = join"\n",@{$mergexb->{body}};
-   $meta = &extract_keywords($cb);
-   @n = qw(b x a); @h = ($_[1], $_[2], $_[0]);
- } else {
-   my $vote = &vote3($mergexa,$mergexb,$x);
-   my $mergeab = ($vote) ? $mergexa : $mergexb;
-   @n = ($vote) ? qw(a x b) : qw(b x a);
-   @h = ($vote) ? ($_[0], $_[2], $_[1]) : ($_[1],$_[2],$_[0]);
-   $body = join"\n",@{$mergeab->{body}};
-   if ($::dbug) {
-     unlink 'mergeab.txt';
-     &write_file('mergeab.txt',$body);
-   }
-   $meta = ($vote) ? &extract_keywords($ca) : &extract_keywords($cb); 
- }
- #printf "body: %s.\n",$body;
- #printf "meta: %s.\n",Dump($meta);
- my $block = &set_keywords($body,$meta);
- $block =~ s/^<<<<<<<$/<<<<<<< $n[0]: $h[0]/m;
- $block =~ s/^\|\|\|\|\|\|\|$/||||||| $n[1]: $h[1]/m;
- $block =~ s/^=======$/======= $n[2]: $h[2]/m;
- printf "block: %s.\n",$block if $dbug;
- if ($::dbug) {
-  &write_file('merged.txt',$block);
- }
- my $mh = &ipms_post_api('add','merged.txt',$block);
-
- return $mh->{Hash};
-}
-
-sub vote3 {
- print STDERR "error: conflict !\n";
- return (rand() < 0.5) ? 0 : 1;
-}
-
-sub common_ancestor {
-   my $attr = {};
-   my ($a,$b) = @_;
-   $dbug=1;
-   #list ancestor of head node graph a
-   my $aa = [ &get_ancestors($a) ];
-   printf "aa: [%s]\n",join', ',map { shorthash($_); } @{$aa} if $dbug;
-   &mark($attr,$aa,{color => 1}); # red nodes
-   my $ab = [ &get_ancestors($b) ];
-   printf "ab: [%s]\n",join', ',map { shorthash($_); } @{$ab} if $dbug;
-   &mark($attr,$ab,{color => 2}); # blue nodes
-   printf "attr: %s.\n",Dump($attr) if $dbug;
-   # commons ancestors (vertices)
-   my $ca_v = &filter($attr,[keys(%$attr)],{color => 3}); # purple nodes
-   printf "ca(purple): [%s]\n",join',',map { &shorthash($attr->{$_}{node}[0]); } @{$ca_v} if $dbug;
-   for my $vertex (@{$ca_v}) {
-      #y $vertex = &get_vertex($block);
-      printf "vertex: %s : node: %s\n", map { &shorthash($_); } ($vertex,$attr->{$vertex}{node}[0]) if $dbug;
-      $attr->{$vertex}{cnt} = 0 if (! defined $attr->{$vertex}{cnt});
-      foreach my $n (@{$attr->{$vertex}{node}}) {
-         my $parents = &get_parents($n); next unless $parents;
-         for my $p (@{$parents}) {
-            my $v = &get_vertex($p);
-            $attr->{$v}{cnt} += 1;
-         }
-      }
-   }
-   # closest ancestors are the ones w/ cnt == 0;
-   my $cca = &filter($attr,$ca_v,{cnt => 0});
-   printf "cca-payload: [%s]\n",join', ',@{$cca} if $dbug;
-   printf "cca-nodes: [%s]\n",join', ', map { $attr->{$_}{node}[0] } @{$cca} if $dbug;
-   return $attr->{$cca->[0]}{node}[0]; # return the first node corresponding to vertex !
-}
-sub get_ancestors {
-  my $block = shift;
- return undef unless defined $block;
- my @ancestors = ();
- my @parents = @{ &get_parents($block) }; # parent are block's hash too (nodes, eventhough we interrested in they payload only)
- if (scalar(@parents) == 0) {
-     #@parents = map { &get_payload_hash($_); } @previous 
-     push @parents, &get_previous($block);  # addresses (block's hash) (nodes)
- }
- printf "parents(%s): [%s]\n",$block,join',',map { &shorthash($_); } @parents if $dbug;
- push @ancestors, @parents;
- foreach my $p (@parents) {
-   my @grandpa = &get_ancestors($p); # recursion
-   printf " grandpa=a(%s): [%s]\n",$p,join',', map { &shorthash($_); } @grandpa if $dbug;
-   push @ancestors, @grandpa if @grandpa;
- }
- printf "ancestors(%s): [%s]\n",$block,join',', map { &shorthash($_); } @ancestors if $dbug;
- return @ancestors;
-}
-
-sub mark {
-  my ($attr,$list,$kv) = @_;
-  foreach my $n (@{$list}) {
-    printf "[mark]: n=%s ",$n if $dbug;
-    my $v = &get_vertex($n);
-    push @{$attr->{$v}{node}}, $n;
-    foreach my $k (keys %{$kv}) {
-      printf "%s:%s\n",$k,$kv->{$k} if $dbug;
-      $attr->{$v}{$k} |= $kv->{$k}; # bitwise or for "additive" colors
-    }
-  }
-  return $?;
-}
-sub filter {
-  my $attr = shift; # hash of vertices attributes
-  my $list = shift; # list of nodes
-  my $req = shift;
-  my @results = ();
-  foreach my $k (keys %{$req}) {
-  foreach my $v (@{$list}) {
-    #printf "a{%s}{%s} = %s =? %s\n",$n,$k,$attr->{$n}{$k},$req->{$k};
-    if ($attr->{$v}{$k} == $req->{$k}) {
-      push @results, $v;
-      #printf "results: %s\n",join', ',@{$results};
-    }
-   }
- }
- return [ @results ];
-}
-
-sub get_parents { # all parents are nodes
-  my $n = shift;
-  my $buf = &get_hash_content($n);
-  #printf "content(%s): %s.\n",$n,nonl($buf,0,76);
-  if ($buf eq '') {
-    return [];
-  } else {
-    my $prev = &extract_keywords($buf,'parents');
-    return ($prev) ? $prev : [];
-  }
-}
-sub get_previous {
-  my $n = shift;
-  my $buf = &get_hash_content($n);
-  printf qq'buf: "%s"\n',$buf;
-  if ($buf eq '') {
-    return undef;
-  } else {
-     my $prev = &extract_keywords($buf,'previous');
-#    printf "prev(%s): %s\n",$n,$prev;
-     return ($prev) ? $prev : undef
-  }
-}
-sub get_vertex {
-  my $n = shift;
-  my $buf = &get_hash_content($n);
-  #printf"[vtx]: %s=%s\n",$n,&nonl($buf,0,36);
-  my $payload = &remove_keywords($buf);
-  #printf qq'payload: "%s"\n',&nonl($payload);
-  my $sha2 = &hashr('SHA256',1,$payload);
-  return 'z'.encode_base58(pack('H8','01551220').$sha2);
-}
-
-sub extract_keywords {
-   my $keywords = {};
-   my $buf = shift;
-   my $kw = shift;
-   #printf "kw: %s\n",$kw;
-   #printf "[xkw]: kw=%s; content=%s.\n",$kw,&nonl($buf,0,36);
-   $buf =~ s/\$qm: .*\s*\$/\$qm: $qmstatic\$/;
-   my $qm = 'z'.&encode_base58(pack('H8','01551220').&hashr('SHA256',1,$buf));
-   $keywords->{qm} = $qm;
-   # /!\ keywords regexp loop ... w/ lookbehind " or \n and lookahead \\
-   while ($buf =~ m/(?<![\\\$])\$([A-Z]\w+|qm|source|parents|members|mutable|previous|next|tic|spot):\s*([^{}\\\$]*?)\s*(?>!\\)?\$(?=['"\s])/g) {
-      #printf "debug: %s %s (pos: %d)\n",$1,$2, pos $buf if $dbug;
-      my $keyw=$1;
-      my $value = ($2 eq '~') ? undef : $2;
-      if ($keyw =~ m/^[a-z]/) { # reserved keywords 
-        if (&is_plurial($keyw) || $value =~ m/,/) {
-          $keywords->{$keyw} = [ split(/,\s*/,$value) ];
-        } else {
-          $keywords->{$keyw} = $value;
-        }
-      } else {
-        # TBD need a means to distinguish singleton and scalar values
-        $keywords->{$keyw} = $value;
-      }
-   }
-   #printf "xkw(qm=%s): kw=%s keywords=%s.\n",substr($qm,0,7),$kw,&nonl(YAML::Syck::Dump($keywords));
-   if (defined $kw) {
-     return $keywords->{$kw};
-   } else {
-     return $keywords;
-   }
-}
-sub set_keywords {
-   my $buf = shift;
-   my $dict = shift;
-   my $spot = &get_spot($^T);
-   use YAML::Syck qw(Dump);
-   printf "dict: %s.\n",YAML::Syck::Dump($dict);
-   foreach my $kw (reverse sort keys %{$dict}) {
-      #printf "%s: %s\n",$kw,$dict->{$kw};
-      if (ref($dict->{$kw}) eq 'ARRAY') {
-        $dict->{$kw} = join', ',@{$dict->{$kw}};
-      }
-      $buf =~ s/(?<![\\\$])\$$kw: [^\$]*\s*(?<!\\)?\$(?=['"\s])?/\$$kw: $dict->{$kw}\$/gm;
-      #my $KW = $kw; $KW =~ s/.*/\u$&/;
-      #$buf =~ s/(?!\\)\$$KW: [^\$]*\s*\$$/\$$KW: $dict->{$kw}\$/gm;
-   }
-   # compute payload (w/ original file i.e. before substitution)
-   $buf =~ s/\$qm: [^\$]*\s*\$$/\$qm: $qmstatic\$/m;
-   my $qm = 'z'.&encode_base58(pack('H8','01551220').&hashr('SHA256',1,$buf));
-   $buf =~ s/\$qm: [^\$]*\s*\$$/\$qm: $qm\$/m; # replace w/ current qm
-   $buf =~ s/\$tic: [^\$]*\s*\$$/\$tic: $^T\$/m; # update timestamp
-   $buf =~ s/\$spot: [^\$]*\s*\$$/\$spot: $spot\$/m; # update space-time spot!
-
-   return $buf;
-
-}
-sub remove_keywords {
-   my $buf = shift;
-   $buf =~ s/(?<![\\\$])\$([A-Z]\w+):\s*([^\\\$]*?)\s*\$(?=['"\s])/\$$1: \$/g;
-   $buf =~ s/(?<![\\\$])\$(qm|parents|previous|next|tics?|spot):\s*([^\\\$]*?)\s*\$(?=['"\s])/\$$1: $qmstatic\$/g;
-   return $buf;
-}
-
-sub is_plurial {
- if ($_[0] =~ m/s$/ && $_[0] ne 'previous') {
-   return 1;
- } else {
-   return 0;
- }
-}
-sub is_reserved {
-  return ($_[0] =~ m/qm|source|parents|members|mutable|previous|next|tic|spot/) ? 1 : 0;
-}
-sub is_keyword {
-  return ($_[0] =~ m/(?<![\\\$])\$([A-Z]\w+|qm|source|parents|members|mutable|previous|next|tic|spot):\s*([^\\\$]*?)\s*(?>!\\)?\$(?=['"\s])/) ? 1 : 0;
-}
-
-sub shorthash {
-  my $hash = shift;
-  my $s1 = ($hash =~ m/^zb2/) ? substr($hash,3,5) : substr($hash,0,5);
-  my $s2 = substr($hash,-4);
-  return $s1.'...'.$s2;
-}
-
-# -----------------------------------------------------------------------
-sub get_spot {
-   my $tic = shift || $^T;
-   my $key;
-   if (@_) {
-     my $u = shift; # 01xx1220xx... /6\ Assume certain varint range
-     $u =~ y/lIO0/LioZ/; # base58 ish !
-     $key = unpack'N',substr(&decode_base58(substr($u,1)),6,4);
-     #printf "key: f%08x\n",$key;
-   } else {
-     $key = 0x5AA55AA5;
-   }
-   my $dotip = &get_localip;
-   printf "dotip: %s\n",$dotip if $dbug;
-   my $pubip = &get_publicip;
-   printf "pubip: %s\n",$pubip if $dbug;
-   my $lip = unpack'N',pack'C4',split('\.',$dotip);
-   my $nip = unpack'N',pack'C4',split('\.',$pubip);
-   if (1) {
-   printf "tic: f%08x\n",$tic;
-   printf "nip: f%08x\n",$nip;
-   printf "lip: f%08x\n",$lip;
-   printf "key: f%08x\n",$key;
-   }
-   my $spot = $tic ^ $nip ^ $lip ^ $key;
-   return $spot;
-}
-
-
-
 # -----------------------------------------------------------------------
 1; # $Source: /my/perl/modules/IPMS.pm,v $
