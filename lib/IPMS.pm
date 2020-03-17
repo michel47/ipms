@@ -880,14 +880,27 @@ sub shorthash {
 
 # -----------------------------------------------------------------------
 sub get_spot {
-   my $tic = $_[0] || $^T;
+   my $tic = shift || $^T;
+   my $nonce;
+   if (@_) {
+     use Digest::MurmurHash qw();
+     $nonce = Digest::MurmurHash::murmur_hash(join'',@_);
+   } else {
+     $nonce = 0xA5A5_5A5A;
+   }
+   printf "nonce f%08x\n",$nonce;
    my $dotip = &get_localip;
    printf "dotip: %s\n",$dotip;
    my $pubip = &get_publicip;
    printf "pubip: %s\n",$pubip;
    my $lip = unpack'N',pack'C4',split('\.',$dotip);
    my $nip = unpack'N',pack'C4',split('\.',$pubip);
-   my $spot = $tic ^ $nip ^ $lip;
+   my $seed = srand($nip);
+   printf "seed: f%08x\n",$seed;
+   my $salt = int rand(59);
+   printf "salt: %s\n",$salt;
+   my $time = 59 * int (($tic - 58) / 59) + $salt;
+   my $spot = $time ^ $nip ^ $lip ^ $nonce;
    return $spot;
 }
 # -----------------------------------------------------------------------
