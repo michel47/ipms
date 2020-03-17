@@ -108,7 +108,7 @@ sub get_key {
 # -----------------------------------------------------
 sub get_addr {
   my $mfspath = shift;
-  my $mh = &ipms_api('files/stat',$mfspath,'&hash=1');
+  my $mh = &ipms_get_api('files/stat',$mfspath,'&hash=1');
   printf "[get_addr] stat: %s.\n",YAML::Syck::Dump($mh) if $dbug;
   return $mh->{Hash};
 }
@@ -116,7 +116,7 @@ sub get_addr {
 sub get_hash_content {
   my $hash = shift;
   return undef unless defined $hash;
-  my $buf = &ipms_api('cat',$hash);
+  my $buf = &ipms_get_api('cat',$hash);
   #printf "%s.\n",Dump($buf) if $dbug;
   return $buf;
 }
@@ -142,7 +142,54 @@ sub get_repo_content {
   return $buf;
 }
 # -----------------------------------------------------
-sub ipms_post_api {
+sub mfs_append {
+  my ($text,$mpath) = @_;
+  my $buf = &ipms_get_api('files/read',$mpath);
+  $buf .= "$text";
+  $buf .= "\n" if ($text !~ m/\n$/);
+  # http://localhost:5001/api/v0/files/write?arg=<path>&offset=<value>&create=<value>
+  #  &parents=<value>&truncate=<value>&count=<value>&raw-leaves=<value>&cid-version=<value>&hash=<value>
+  my $mh = &ipms_post_api('files/write',$mpath,$buf,'&create=true&truncate=true');
+  my $mh = &ipms_get_api('files/stat',$mpath,'&hash=true');
+  return $mh;
+}
+sub mfs_copy {
+   my $src = shift;
+   my $dst = shift;
+   my $parent = $dst; $parent =~ s,[^/]*$,,;
+   my $mh = &ipms_get_api('files/stat',"$dst",'&hash=1');
+   # printf "stat: %s.\n",YAML::Syck::Dump($mh);
+   if (exists $mh->{Hash}) { # mfs:$dst exists !
+      my $mh = &ipms_get_api('files/rm',"$dst");
+      # printf "rm: %s.\n",YAML::Syck::Dump($mh);
+   } else { # create the folder
+      my $mh = &ipms_get_api('files/mkdir',"$parent",'&parents=true');
+      # printf "mkdir: %s.\n",YAML::Syck::Dump($mh);
+   }
+   if (-f $src) { # src = files://*
+     my $data = &file_read($src);
+     my $mh = &ipms_post_api('files/write',$dst,"$data",'&create=1');
+   } else { # src = /ipfs/*
+     my $mh = &ipms_get_api('files/cp',"$src","&arg=$dst");
+     # printf "cp: %s.\n",YAML::Syck::Dump($mh);
+     return $?;
+   }
+}
+# --------------------------------------------
+sub mfs_write {
+   my $data = shift;
+   my $dst = shift;
+   my $mh = &ipms_post_api('files/write',$dst,$data,'&create=true&truncate=true');
+   my $mh = &ipms_get_api('files/stat',$dst,'&hash=true');
+   return $mh;
+}
+sub mfs_read {
+   my $mpath = shift;
+   my $data = &ipms_get_api('files/read',$mpath);
+   return $data;
+}
+# -----------------------------------------------------
+sub ipfs_post_api {
   my $cmd = shift;
   my $data = shift;
   my $filename = 'blob.data';
@@ -178,18 +225,20 @@ sub ipms_post_api {
      my $content = '5xx';
      my $resp = $ua->post($url,$form, 'Content-Type' => "multipart/form-data;boundary=immutable-file-boundary-$$");
      if ($resp->is_success) {
-#       printf "X-Status: %s<br>\n",$resp->status_line;
+#       printf "X-Status: %s\n",$resp->status_line;
         $content = $resp->decoded_content;
 #       printf qq'content: "%s"\n',$content;
      } else { # error ... 
-        print "<pre>";
+        print "[33m";
         printf "X-api-url: %s\n",$url;
+        print "[31m";
         printf "Status: %s\n",$resp->status_line;
         $content = $resp->decoded_content;
         local $/ = "\n";
+        print "[32m";
         chomp($content);
         printf "Content: %s\n",$content;
-        print "</pre>\n";
+        print "[0m";
      }
      use JSON qw(decode_json);
      my $json = &decode_json($content);
@@ -202,7 +251,7 @@ sub ipms_post_api {
   }
 }
 # -----------------------------------------------------
-sub ipms_api {
+sub ipms_get_api {
 # ipms config Addresses.API
 #  (assumed gateway at /ip4/127.0.0.1/tcp/5001/...)
    my $api_url;
@@ -213,7 +262,7 @@ sub ipms_api {
       $api_url = sprintf'http://%s:%s/api/v0/%%s?arg=%%s%%s',$apihost,$apiport;
    }
    my $url = sprintf $api_url,@_; # failed -w flag !
-#  printf "X-api-url: %s<br>\n",$url;
+#  printf "X-api-url: %s\n",$url;
    my $content = '';
    use LWP::UserAgent qw();
    use MIME::Base64 qw(decode_base64);
@@ -228,17 +277,19 @@ sub ipms_api {
    }
    my $resp = $ua->get($url);
    if ($resp->is_success) {
-#     printf "X-Status: %s<br>\n",$resp->status_line;
+#     printf "X-Status: %s\n",$resp->status_line;
       $content = $resp->decoded_content;
    } else { # error ... 
-      print "<pre>";
+      print "[33m";
       printf "X-api-url: %s\n",$url;
+      print "[31m";
       printf "Status: %s\n",$resp->status_line;
       $content = $resp->decoded_content;
       local $/ = "\n";
       chomp($content);
+      print "[32m";
       printf "Content: %s\n",$content;
-      print "</pre>\n";
+      print "[0m";
    }
    if ($_[0] =~ m{^(?:cat|files/read)}) {
      return $content;
@@ -252,6 +303,91 @@ sub ipms_api {
    use JSON qw(decode_json);
    my $json = &decode_json($content);
    return $json;
+}
+# -----------------------------------------------------
+sub ipms_post_api {
+   use JSON qw(decode_json);
+   use LWP::UserAgent qw();
+   use HTTP::Request 6.07;
+   my $cmd = shift;
+   my $filename = shift;
+   my $data = shift;
+   my $opt = join'',@_;
+   my $filepath = '/tmp/blob.data';
+   my $api_url;
+   # --------------------------------
+   # selecting alternative endpoint :
+   if ($ENV{HTTP_HOST} =~ m/heliohost/) {
+      $api_url = sprintf'https://%s/api/v0/%%s?arg=%%s%%s','ipfs.blockringtm.ml';
+   } else {
+      my ($apihost,$apiport) = &get_apihostport();
+      $api_url = sprintf'http://%s:%s/api/v0/%%s?arg=%%s%%s',$apihost,$apiport;
+   }
+   # --------------------------------
+   if ($cmd =~ m/(?:add|write)$/) {
+      my $url = sprintf $api_url,$cmd,$filename,$opt; # name of type="file"
+      printf "url: %s\n",$url if $dbug;
+      my $ua = LWP::UserAgent->new();
+      if ($api_url =~ m/blockringtm\.ml/) {
+         my $realm='Restricted Content';
+         my $auth64 = &get_auth();
+         my ($user,$pass) = split':',&decode_base64($auth64);
+         $ua->credentials('ipfs.blockringtm.ml:443', $realm, $user, $pass);
+#       printf "X-Creds: %s:%s\n",$ua->credentials('ipfs.blockringtm.ml:443', $realm);
+      }
+      my $form = [
+#       You are allowed to use a CODE reference as content in the request object passed in.
+#       The content function should return the content when called. The content can be returned
+#       Content => [$filepath, $filename, Content => $data ]
+#        'file-to-upload' => ["$filepath" => "$filename", Content => "$data" ]
+         'file' => "$data"
+      ];
+      my $content = '5xx';
+      my $resp = $ua->post($url,$form, 'Content-Type' => "multipart/form-data;boundary=immutable-file-boundary-$$");
+      if ($resp->is_success) {
+#       printf "X-Status: %s\n",$resp->status_line;
+         $content = $resp->decoded_content;
+#       printf qq'content: "%s"\n',$content;
+      } else { # error ... 
+         printf "X-api-url: %s\n",$url;
+         printf "Status: %s\n",$resp->status_line;
+         $content = $resp->decoded_content;
+         local $/ = "\n";
+         chomp($content);
+         printf "Content: %s\n",$content;
+      }
+      if ($content =~ m/^{/) { # }
+         my $json = &decode_json($content);
+         return $json;
+      } else {
+         return $content;
+      }
+
+
+   } else {
+      my $sha2 = &hashr('SHA256',1,$data);
+      return 'z'.encode_base58(pack('H8','01551220').$sha2);
+   }
+}
+# -----------------------------------------------------
+sub get_gwhostport {
+  my $IPFS_PATH = $ENV{IPFS_PATH} || $ENV{HOME}.'/.ipfs';
+  my $conff = $IPFS_PATH . '/config';
+  local *CFG; open CFG,'<',$conff or warn $!;
+  local $/ = undef; my $buf = <CFG>; close CFG;
+  use JSON qw(decode_json);
+  my $json = decode_json($buf);
+  my $gwaddr = $json->{Addresses}{Gateway};
+  my (undef,undef,$gwhost,undef,$gwport) = split'/',$gwaddr,5;
+      $gwhost = '127.0.0.1' if ($gwhost eq '0.0.0.0');
+  my $url = sprintf'http://%s:%s/ipfs/zz38RTafUtxY',$gwhost,$gwport;
+  my $ua = LWP::UserAgent->new();
+  my $resp = $ua->get($url);
+  if ($resp->is_success) {
+    return ($gwhost,$gwport);
+  } else {
+    return ('ipfs.blockringtm.ml',443);
+  }
 }
 # -----------------------------------------------------
 sub get_apihostport {
